@@ -4,8 +4,13 @@
  *
  * HLS CSIIR 模块 - 顶层接口
  *
- * @version 1.0
+ * @version 2.0
  * @date 2026-03-13
+ *
+ * 更新:
+ * - 支持 8K 分辨率 (7680x4320)
+ * - 支持 10-bit 像素
+ * - 支持 YUV 三通道独立处理
  */
 
 #include "csiir_top.h"
@@ -14,6 +19,15 @@
 #include "directional_filter.h"
 #include "blending.h"
 
+/**
+ * @brief 单通道 CSIIR 处理核心
+ *
+ * 实现 CSIIR 4 阶段流水线:
+ * Stage 1: Sobel 5x5 梯度计算
+ * Stage 2: 窗口大小选择
+ * Stage 3: 方向平均滤波 + 梯度加权平均
+ * Stage 4: IIR Blending + 最终融合
+ */
 void csiir_process_channel(
     hls::stream<pixel_t> &pixel_in,
     hls::stream<ap_uint<1>> &last_in,
@@ -23,7 +37,8 @@ void csiir_process_channel(
     index_t width,
     index_t height)
 {
-#pragma HLS DATAFLOW
+    // Note: DATAFLOW removed for C++ simulation compatibility
+    // In HLS synthesis, add: #pragma HLS DATAFLOW
 
     // 内部流
     hls::stream<grad_signed_t> grad_h_stream("grad_h_stream");
@@ -59,13 +74,13 @@ void csiir_process_channel(
         win_size_stream, grad_stream2, last_stream2,
         config.sobel_thresh_0, config.sobel_thresh_1,
         config.sobel_thresh_2, config.sobel_thresh_3,
-        width
+        width, height
     );
 
     // Stage 3 & 4: 方向平均滤波 + Blending
     // (简化实现: 在单个循环中完成)
 
-    // Line Buffer 存储像素和梯度
+    // Line Buffer 存储像素和梯度 (使用参数化最大宽度)
     pixel_t pixel_buf[6][MAX_IMAGE_WIDTH];
     grad_t grad_buf[5][MAX_IMAGE_WIDTH];
     winsize_t winsize_buf[MAX_IMAGE_WIDTH];
@@ -172,7 +187,12 @@ void csiir_process_channel(
     }
 }
 
-void csiir_top(
+/**
+ * @brief CSIIR UV 双通道处理 (YUV422 兼容模式)
+ *
+ * 向后兼容原有 UV 双通道处理接口
+ */
+void csiir_top_uv(
     hls::stream<AxisUV> &axis_in,
     hls::stream<AxisUV> &axis_out,
     CSIIRConfig &config,
@@ -236,4 +256,128 @@ void csiir_top(
             axis_out.write(out_data);
         }
     }
+}
+
+/**
+ * @brief CSIIR YUV 三通道独立处理
+ *
+ * Y/U/V 各通道独立进行 CSIIR 滤波
+ */
+void csiir_top_yuv(
+    hls::stream<AxisYUV> &axis_in,
+    hls::stream<AxisYUV> &axis_out,
+    CSIIRConfig &config,
+    index_t width,
+    index_t height)
+{
+#pragma HLS INTERFACE axis port=axis_in
+#pragma HLS INTERFACE axis port=axis_out
+#pragma HLS INTERFACE s_axilite port=config bundle=CTRL
+#pragma HLS INTERFACE s_axilite port=width bundle=CTRL
+#pragma HLS INTERFACE s_axilite port=height bundle=CTRL
+#pragma HLS INTERFACE s_axilite port=return bundle=CTRL
+
+    // 分离 Y/U/V 通道流 (每通道独立的 last 流)
+    hls::stream<pixel_t> y_in_stream("y_in_stream");
+    hls::stream<pixel_t> u_in_stream("u_in_stream");
+    hls::stream<pixel_t> v_in_stream("v_in_stream");
+    hls::stream<ap_uint<1>> last_y_in_stream("last_y_in_stream");
+    hls::stream<ap_uint<1>> last_u_in_stream("last_u_in_stream");
+    hls::stream<ap_uint<1>> last_v_in_stream("last_v_in_stream");
+
+    hls::stream<pixel_t> y_out_stream("y_out_stream");
+    hls::stream<pixel_t> u_out_stream("u_out_stream");
+    hls::stream<pixel_t> v_out_stream("v_out_stream");
+    hls::stream<ap_uint<1>> last_y_stream("last_y_stream");
+    hls::stream<ap_uint<1>> last_u_stream("last_u_stream");
+    hls::stream<ap_uint<1>> last_v_stream("last_v_stream");
+
+#pragma HLS STREAM variable=y_in_stream depth=8
+#pragma HLS STREAM variable=u_in_stream depth=8
+#pragma HLS STREAM variable=v_in_stream depth=8
+#pragma HLS STREAM variable=last_y_in_stream depth=8
+#pragma HLS STREAM variable=last_u_in_stream depth=8
+#pragma HLS STREAM variable=last_v_in_stream depth=8
+#pragma HLS STREAM variable=y_out_stream depth=8
+#pragma HLS STREAM variable=u_out_stream depth=8
+#pragma HLS STREAM variable=v_out_stream depth=8
+#pragma HLS STREAM variable=last_y_stream depth=8
+#pragma HLS STREAM variable=last_u_stream depth=8
+#pragma HLS STREAM variable=last_v_stream depth=8
+
+    // 输入分离 (为每个通道复制 last 信号)
+    for (index_t row = 0; row < height; row++) {
+        for (index_t col = 0; col < width; col++) {
+#pragma HLS PIPELINE II=1
+            AxisYUV in_data = axis_in.read();
+            y_in_stream.write(in_data.y);
+            u_in_stream.write(in_data.u);
+            v_in_stream.write(in_data.v);
+            // 为三个通道分别写入 last 信号
+            last_y_in_stream.write(in_data.last);
+            last_u_in_stream.write(in_data.last);
+            last_v_in_stream.write(in_data.last);
+        }
+    }
+
+    // 三通道独立处理 (每通道使用独立的 last 流)
+    csiir_process_channel(
+        y_in_stream, last_y_in_stream,
+        y_out_stream, last_y_stream,
+        config, width, height
+    );
+
+    csiir_process_channel(
+        u_in_stream, last_u_in_stream,
+        u_out_stream, last_u_stream,
+        config, width, height
+    );
+
+    csiir_process_channel(
+        v_in_stream, last_v_in_stream,
+        v_out_stream, last_v_stream,
+        config, width, height
+    );
+
+    // 输出合并
+    for (index_t row = 0; row < height; row++) {
+        for (index_t col = 0; col < width; col++) {
+#pragma HLS PIPELINE II=1
+            AxisYUV out_data;
+            out_data.y = y_out_stream.read();
+            out_data.u = u_out_stream.read();
+            out_data.v = v_out_stream.read();
+            out_data.last = last_y_stream.read();
+            out_data.user = 0;
+            axis_out.write(out_data);
+        }
+    }
+}
+
+/**
+ * @brief CSIIR 顶层模块 (格式自适应)
+ *
+ * 根据 YUV_FORMAT 配置自动选择处理模式
+ */
+void csiir_top(
+    hls::stream<AxisYUV> &axis_in,
+    hls::stream<AxisYUV> &axis_out,
+    CSIIRConfig &config,
+    index_t width,
+    index_t height)
+{
+#pragma HLS INTERFACE axis port=axis_in
+#pragma HLS INTERFACE axis port=axis_out
+#pragma HLS INTERFACE s_axilite port=config bundle=CTRL
+#pragma HLS INTERFACE s_axilite port=width bundle=CTRL
+#pragma HLS INTERFACE s_axilite port=height bundle=CTRL
+#pragma HLS INTERFACE s_axilite port=return bundle=CTRL
+
+    // 根据 YUV_FORMAT 选择处理模式
+#if YUV_FORMAT == 444
+    csiir_top_yuv(axis_in, axis_out, config, width, height);
+#else
+    // YUV422/420: 使用三通道处理
+    csiir_top_yuv(axis_in, axis_out, config, width, height);
+#endif
 }

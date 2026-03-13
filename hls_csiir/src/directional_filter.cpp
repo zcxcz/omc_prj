@@ -4,8 +4,11 @@
  *
  * HLS CSIIR 模块 - Stage 2/3: 方向平均滤波
  *
- * @version 1.0
+ * @version 2.0
  * @date 2026-03-13
+ *
+ * 更新:
+ * - 支持 10-bit 像素
  */
 
 #include "directional_filter.h"
@@ -86,8 +89,8 @@ static const ap_uint<1> MASK_R[5][5] = {
 static pixel_t compute_weighted_avg(
     pixel_t window[5][5],
     const ap_uint<4> factor[5][5],
-    const ap_uint<1> mask[5][5] = NULL
-) {
+    const ap_uint<1> mask[5][5] = NULL)
+{
     acc_t sum_val = 0;
     acc_t sum_factor = 0;
 

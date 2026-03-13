@@ -4,8 +4,12 @@
  *
  * HLS CSIIR 模块 - Stage 2: 窗口大小选择
  *
- * @version 1.0
+ * @version 2.0
  * @date 2026-03-13
+ *
+ * 更新:
+ * - 支持 8K 分辨率
+ * - 支持 10-bit 像素 (16-bit 阈值)
  */
 
 #include "window_selector.h"
@@ -14,10 +18,10 @@ winsize_t select_window_size(
     grad_t grad_curr,
     grad_t grad_prev,
     grad_t grad_next,
-    ap_uint<8> thresh_0,
-    ap_uint<8> thresh_1,
-    ap_uint<8> thresh_2,
-    ap_uint<8> thresh_3)
+    ap_uint<16> thresh_0,
+    ap_uint<16> thresh_1,
+    ap_uint<16> thresh_2,
+    ap_uint<16> thresh_3)
 {
     // 使用 3 个连续像素的最大梯度
     grad_t max_grad = grad_curr;
@@ -46,13 +50,14 @@ void window_selector(
     hls::stream<winsize_t> &win_size_out,
     hls::stream<grad_t> &grad_out,
     hls::stream<ap_uint<1>> &last_out,
-    ap_uint<8> thresh_0,
-    ap_uint<8> thresh_1,
-    ap_uint<8> thresh_2,
-    ap_uint<8> thresh_3,
-    index_t width)
+    ap_uint<16> thresh_0,
+    ap_uint<16> thresh_1,
+    ap_uint<16> thresh_2,
+    ap_uint<16> thresh_3,
+    index_t width,
+    index_t height)
 {
-    // 行缓存 (存储上一行梯度)
+    // 行缓存 (存储上一行梯度) - 使用参数化最大宽度
     grad_t prev_line[MAX_IMAGE_WIDTH];
     grad_t curr_line[MAX_IMAGE_WIDTH];
 
@@ -69,8 +74,8 @@ void window_selector(
     // 当前像素的前一列梯度
     grad_t grad_prev_col = 0;
 
-    // 处理每个像素
-    for (index_t row = 0; row < MAX_IMAGE_HEIGHT; row++) {
+    // 处理每个像素 (使用实际高度，不是最大高度)
+    for (index_t row = 0; row < height; row++) {
         for (index_t col = 0; col < width; col++) {
 #pragma HLS PIPELINE II=1
 

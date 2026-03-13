@@ -4,8 +4,12 @@
  *
  * HLS CSIIR 模块 - Stage 1: Sobel 滤波
  *
- * @version 1.0
+ * @version 2.0
  * @date 2026-03-13
+ *
+ * 更新:
+ * - 支持 8K 分辨率
+ * - 支持 10-bit 像素
  */
 
 #include "sobel_filter.h"
@@ -34,7 +38,7 @@ void sobel_filter_5x5_window(
         }
     }
 
-    // 截断到 16-bit
+    // 截断到 grad_signed_t (18-bit signed)
     grad_h = (grad_signed_t)sum_x;
     grad_v = (grad_signed_t)sum_y;
 
@@ -60,7 +64,7 @@ void sobel_filter_5x5(
     index_t width,
     index_t height)
 {
-    // Line Buffer: 5 行缓存
+    // Line Buffer: 5 行缓存 (使用参数化最大宽度)
     pixel_t line_buf[5][MAX_IMAGE_WIDTH];
 
     // 滑动窗口
@@ -130,7 +134,10 @@ void sobel_filter_5x5(
 
                 // 直通输出 (中心像素)
                 pixel_out.write(window[2][2]);
-                last_out.write((row == height + 1) ? (ap_uint<1>)1 : (ap_uint<1>)0);
+
+                // 从延迟线获取 last 信号 (延迟 2 行)
+                // 简化实现: 基于 col 位置生成 last
+                last_out.write((col == width - 1) ? (ap_uint<1>)1 : (ap_uint<1>)0);
             }
         }
     }

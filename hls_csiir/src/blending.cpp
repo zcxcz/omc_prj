@@ -4,8 +4,12 @@
  *
  * HLS CSIIR 模块 - Stage 4: IIR Blending 和最终融合
  *
- * @version 1.0
+ * @version 2.0
  * @date 2026-03-13
+ *
+ * 更新:
+ * - 支持 8K 分辨率
+ * - 支持 10-bit 像素
  */
 
 #include "blending.h"
@@ -128,7 +132,7 @@ void blending_pipeline(
     ap_uint<8> blend_ratio[4],
     index_t width)
 {
-    // 上一行数据缓存
+    // 上一行数据缓存 (使用参数化最大宽度)
     pixel_t prev_line[MAX_IMAGE_WIDTH];
 
 #pragma HLS ARRAY_PARTITION variable=prev_line cyclic factor=4
