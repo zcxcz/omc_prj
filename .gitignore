@@ -1,0 +1,25 @@
+# Build artifacts
+*.o
+*.a
+*.so
+*.exe
+tb_csiir
+tb_csiir_simple
+
+# IDE
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# HLS
+*.prj/
+solution*/
+*.log
+
+# OMC state files
+.omc/state/
+.omc/sessions/

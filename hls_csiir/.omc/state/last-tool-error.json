@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"cd /home/sheldon/hls_project/rtl_project && git remote -v && git config user.name && git config user.email\",\"description\":\"Get git config from rtl_project\"}",
+  "error": "Exit code 1\n(eval):cd:1: no such file or directory: /home/sheldon/hls_project/rtl_project\n\n(eval):cd:1: no such file or directory: /home/sheldon/hls_project/rtl_project",
+  "timestamp": "2026-03-13T05:20:43.455Z",
+  "retry_count": 1
+}
