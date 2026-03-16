@@ -346,37 +346,41 @@ class FixedPointCSIIR:
 
     def __init__(self, config: FixedPointConfig = None):
         self.config = config or FixedPointConfig()
+        self.pixel_max = (1 << self.config.pixel_bits) - 1
 
     def sobel_filter(self, window: np.ndarray) -> Tuple[int, int, int]:
         """Stage 1: Sobel filter with fixed-point arithmetic"""
         win = window.astype(np.int32)
 
-        # Gx: ap_int<16> range [-255*5, 255*5] = [-1275, 1275]
+        # Gx: ap_int<18> for 10-bit pixels
         gx = int(np.sum(win * SOBEL_X))
-        gx = max(-32768, min(32767, gx))  # Simulate ap_int<16>
+        gx = max(-131072, min(131071, gx))  # Simulate ap_int<18>
 
-        # Gy: ap_int<16>
+        # Gy: ap_int<18>
         gy = int(np.sum(win * SOBEL_Y))
-        gy = max(-32768, min(32767, gy))
+        gy = max(-131072, min(131071, gy))
 
-        # Gradient: ap_uint<16> = |Gx|/5 + |Gy|/5
+        # Gradient: ap_uint<19> = |Gx|/5 + |Gy|/5
         grad = (abs(gx) + 2) // 5 + (abs(gy) + 2) // 5  # Rounded division
-        grad = max(0, min(65535, grad))  # Simulate ap_uint<16>
+        grad = max(0, min(524287, grad))  # Simulate ap_uint<19>
 
         return gx, gy, grad
 
     def get_window_size(self, grad: int, grad_prev: int, grad_next: int,
                          thresh: np.ndarray) -> int:
-        """Stage 2: Window size selection"""
+        """Stage 2: Window size selection
+
+        Returns window size index: 2=2x2, 3=3x3, 4=4x4, 5=5x5 (matching HLS C++)
+        """
         max_grad = max(grad_prev, grad, grad_next)
         if max_grad < thresh[0]:
-            return 16
+            return 2  # WINSIZE_2x2
         elif max_grad < thresh[1]:
-            return 24
+            return 3  # WINSIZE_3x3
         elif max_grad < thresh[2]:
-            return 32
+            return 4  # WINSIZE_4x4
         else:
-            return 40
+            return 5  # WINSIZE_5x5
 
     def compute_directional_avgs(self, window: np.ndarray, factor_c: np.ndarray) -> Dict[str, int]:
         """Stage 2: Compute 5-directional averages with fixed-point"""
@@ -396,7 +400,7 @@ class FixedPointCSIIR:
             weighted = max(0, min(0xFFFFFFFF, weighted))
             # Division with rounding
             result = (weighted + w_sum // 2) // w_sum
-            return max(0, min(255, result))
+            return max(0, min(self.pixel_max, result))
 
         return {
             'c': weighted_avg(win, factor_c),
@@ -406,34 +410,38 @@ class FixedPointCSIIR:
             'r': weighted_avg(win, factor_r)
         }
 
-    def get_avg_factors(self, win_size: int, thresh: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        """Get avg0 and avg1 factor matrices"""
-        if win_size < thresh[0]:
+    def get_avg_factors(self, win_size: int, thresh: np.ndarray = None) -> Tuple[np.ndarray, np.ndarray]:
+        """Get avg0 and avg1 factor matrices
+
+        win_size: 2=2x2, 3=3x3, 4=4x4, 5=5x5 (matching HLS C++ winsize_t)
+        """
+        # win_size 2 = smallest window, 5 = largest window
+        # avg0 uses smaller kernel, avg1 uses larger kernel
+        if win_size == 2:  # WINSIZE_2x2
             return ZEROS_5x5.copy(), AVG_FACTOR_2x2.copy()
-        elif win_size < thresh[1]:
+        elif win_size == 3:  # WINSIZE_3x3
             return AVG_FACTOR_2x2.copy(), AVG_FACTOR_3x3.copy()
-        elif win_size < thresh[2]:
+        elif win_size == 4:  # WINSIZE_4x4
             return AVG_FACTOR_3x3.copy(), AVG_FACTOR_4x4.copy()
-        elif win_size < thresh[3]:
+        else:  # WINSIZE_5x5
             return AVG_FACTOR_4x4.copy(), AVG_FACTOR_5x5.copy()
-        else:
-            return AVG_FACTOR_5x5.copy(), ZEROS_5x5.copy()
 
     def get_blend_factors(self, win_size: int, grad_h: int, grad_v: int,
-                          thresh: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        """Get blend0 and blend1 factor matrices"""
+                          thresh: np.ndarray = None) -> Tuple[np.ndarray, np.ndarray]:
+        """Get blend0 and blend1 factor matrices
+
+        win_size: 2=2x2, 3=3x3, 4=4x4, 5=5x5 (matching HLS C++ winsize_t)
+        """
         blend_2x2 = BLEND_2x2_H if abs(grad_h) >= abs(grad_v) else BLEND_2x2_V
 
-        if win_size < thresh[0]:
+        if win_size == 2:  # WINSIZE_2x2
             return ZEROS_5x5.copy(), blend_2x2.copy()
-        elif win_size < thresh[1]:
+        elif win_size == 3:  # WINSIZE_3x3
             return blend_2x2.copy(), BLEND_3x3.copy()
-        elif win_size < thresh[2]:
+        elif win_size == 4:  # WINSIZE_4x4
             return BLEND_3x3.copy(), BLEND_4x4.copy()
-        elif win_size < thresh[3]:
+        else:  # WINSIZE_5x5
             return BLEND_4x4.copy(), BLEND_5x5.copy()
-        else:
-            return BLEND_5x5.copy(), ZEROS_5x5.copy()
 
     def get_directional_grads(self, i: int, j: int, grad_map: np.ndarray) -> Dict[str, int]:
         """Get directional gradients from gradient map"""
@@ -467,52 +475,65 @@ class FixedPointCSIIR:
         grad_sum = max(1, min(0xFFFFFFFF, grad_sum))
 
         result = (weighted + grad_sum // 2) // grad_sum
-        return max(0, min(255, result))
+        return max(0, min(self.pixel_max, result))
 
     def iir_blend(self, dir_avg: int, prev_u: int, win_size: int,
                   blend_ratio: np.ndarray) -> int:
-        """Stage 4: IIR blending with fixed-point"""
-        idx = max(0, min(3, win_size // 8 - 2))
+        """Stage 4: IIR blending with fixed-point
+
+        win_size: 2=2x2, 3=3x3, 4=4x4, 5=5x5 (matching HLS C++ winsize_t)
+        """
+        # Index: win_size 2->0, 3->1, 4->2, 5->3
+        idx = win_size - 2
+        idx = max(0, min(3, idx))
         ratio = int(blend_ratio[idx])
 
         temp = ratio * dir_avg + (64 - ratio) * prev_u
         temp = max(0, min(0xFFFFFFFF, temp))
 
         result = (temp + 32) // 64
-        return max(0, min(255, result))
+        return max(0, min(self.pixel_max, result))
 
     def apply_blend(self, iir_avg: int, factor: np.ndarray, window: np.ndarray) -> np.ndarray:
         """Apply blend factor: (iir * factor + src * (16 - factor) + 8) >> 4"""
         # Factor is scaled by 4: original range [0,4] -> scaled [0,16]
         win = window.astype(np.int32)
         result = (iir_avg * factor + win * (16 - factor) + 8) // 16
-        return np.clip(result, 0, 255).astype(np.int32)
+        return np.clip(result, 0, self.pixel_max).astype(np.int32)
 
     def final_blend(self, blend0: np.ndarray, blend1: np.ndarray, win_size: int) -> np.ndarray:
-        """Final blend with fixed-point - use index-based weighting"""
-        # idx = (win_size - 16) // 8 = 0, 1, 2, 3 for win_size = 16, 24, 32, 40
-        # blend0_weight = 2*idx + 1 = 1, 3, 5, 7
-        # blend1_weight = 7 - 2*idx = 7, 5, 3, 1
-        idx = (win_size - 16) // 8
+        """Final blend with fixed-point - use index-based weighting
+
+        win_size: 2=2x2, 3=3x3, 4=4x4, 5=5x5 (matching HLS C++ winsize_t)
+        idx: 0, 1, 2, 3 for win_size = 2, 3, 4, 5
+        blend0_weight = 2*idx + 1 = 1, 3, 5, 7
+        blend1_weight = 7 - 2*idx = 7, 5, 3, 1
+        """
+        idx = win_size - 2
         blend0_weight = 2 * idx + 1
         blend1_weight = 7 - 2 * idx
         result = (blend0 * blend0_weight + blend1 * blend1_weight + 4) // 8
-        return np.clip(result, 0, 255).astype(np.int32)
+        return np.clip(result, 0, self.pixel_max).astype(np.int32)
 
     def process_channel(self, channel: np.ndarray, thresh: np.ndarray = None,
                         blend_ratio: np.ndarray = None) -> np.ndarray:
         """Process single channel with fixed-point"""
         if thresh is None:
-            thresh = np.array([16, 24, 32, 40], dtype=np.int32)
+            thresh = np.array([16, 24, 32, 40], dtype=np.int32) * ((1 << self.config.pixel_bits) // 256)
         if blend_ratio is None:
             blend_ratio = np.array([32, 32, 32, 32], dtype=np.int32)
 
         height, width = channel.shape
-        output = np.zeros((height, width), dtype=np.uint8)
+        # Use appropriate dtype based on pixel bits
+        if self.config.pixel_bits <= 8:
+            output_dtype = np.uint8
+        else:
+            output_dtype = np.uint16
+        output = np.zeros((height, width), dtype=output_dtype)
         padded = np.pad(channel.astype(np.int32), ((2, 2), (2, 2)), mode='reflect')
 
-        # Pre-compute gradient map
-        grad_map = np.zeros((height, width), dtype=np.uint16)
+        # Pre-compute gradient map - use larger dtype for higher bit depths
+        grad_map = np.zeros((height, width), dtype=np.uint32)
         for y in range(height):
             for x in range(width):
                 _, _, grad = self.sobel_filter(padded[y:y+5, x:x+5])

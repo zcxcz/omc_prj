@@ -153,12 +153,14 @@ void csiir_process_channel(
 
                 directional_filter(window, ws, avg0, avg1);
 
-                // 获取方向梯度
+                // 获取方向梯度 (匹配参考文档定义)
+                // grad_u: 上方 (row-1), grad_d: 下方 (row+1)
+                // grad_l: 左方 (col-1), grad_r: 右方 (col+1)
                 grad_t gc = grad_buf[2][col];
-                grad_t gu = (col == 0) ? gc : grad_buf[2][col-1];
-                grad_t gd = (col == width-1) ? gc : grad_buf[2][col+1];
-                grad_t gl = grad_buf[1][col];
-                grad_t gr = grad_buf[3][col];
+                grad_t gu = grad_buf[1][col];  // 前一行 = 上方
+                grad_t gd = grad_buf[3][col];  // 后一行 = 下方
+                grad_t gl = (col == 0) ? gc : grad_buf[2][col-1];  // 前一列 = 左方
+                grad_t gr = (col == width-1) ? gc : grad_buf[2][col+1];  // 后一列 = 右方
 
                 // 梯度加权平均
                 pixel_t blend0_avg = gradient_weighted_avg(avg0, gc, gu, gd, gl, gr);
