@@ -96,6 +96,41 @@ c2c-12bit:
 c2c-all: c2c-8bit c2c-10bit c2c-12bit
 
 # -----------------------------------------------------------------------------
+# Pattern Output Testbench
+# -----------------------------------------------------------------------------
+
+PATTERN_BIN := tb_csiir_pattern
+
+pattern:
+	@echo "Compiling Pattern Output testbench ($(PIXEL_BITWIDTH)-bit)..."
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(DEFINES) \
+		$(SRCS) $(TB_DIR)/tb_csiir_pattern.cpp \
+		-o $(PATTERN_BIN)_$(PIXEL_BITWIDTH)bit
+	@echo "Built: $(PATTERN_BIN)_$(PIXEL_BITWIDTH)bit"
+
+pattern-10bit:
+	@echo "Compiling Pattern Output testbench (10-bit)..."
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -DPIXEL_BITWIDTH=10 $(DEFINES) \
+		$(SRCS) $(TB_DIR)/tb_csiir_pattern.cpp \
+		-o $(PATTERN_BIN)_10bit
+	@echo "Built: $(PATTERN_BIN)_10bit"
+
+# Pattern Output Testbench - Full Pipeline (uses complete HLS modules)
+pattern-full:
+	@echo "Compiling Pattern Output testbench (Full Pipeline, $(PIXEL_BITWIDTH)-bit)..."
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(DEFINES) \
+		$(SRCS) $(TB_DIR)/tb_csiir_pattern_full.cpp \
+		-o $(PATTERN_BIN)_full_$(PIXEL_BITWIDTH)bit
+	@echo "Built: $(PATTERN_BIN)_full_$(PIXEL_BITWIDTH)bit"
+
+pattern-full-10bit:
+	@echo "Compiling Pattern Output testbench (Full Pipeline, 10-bit)..."
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -DPIXEL_BITWIDTH=10 $(DEFINES) \
+		$(SRCS) $(TB_DIR)/tb_csiir_pattern_full.cpp \
+		-o $(PATTERN_BIN)_full_10bit
+	@echo "Built: $(PATTERN_BIN)_full_10bit"
+
+# -----------------------------------------------------------------------------
 # Run C2C Validation
 # -----------------------------------------------------------------------------
 
@@ -175,6 +210,7 @@ clean:
 	@echo "Cleaning build artifacts..."
 	rm -f $(C2C_BIN) $(C2C_BIN)_8bit $(C2C_BIN)_10bit $(C2C_BIN)_12bit
 	rm -f $(SIM_BIN) tb_csiir_simple tb_csiir_444 tb_csiir_8bit
+	rm -f $(PATTERN_BIN) $(PATTERN_BIN)_8bit $(PATTERN_BIN)_10bit $(PATTERN_BIN)_12bit
 	rm -rf c2c_data/*.bin c2c_data/*.npz c2c_data/*.txt
 	rm -rf .hls
 	@echo "Cleaned."

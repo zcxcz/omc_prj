@@ -50,6 +50,15 @@ static const ap_uint<4> AVG_FACTOR_5x5[5][5] = {
     {1, 1, 1, 1, 1}
 };
 
+// 全零矩阵 (用于 win_size == 2 时的 avg0)
+static const ap_uint<4> AVG_FACTOR_ZEROS[5][5] = {
+    {0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0}
+};
+
 // 方向掩码
 static const ap_uint<1> MASK_U[5][5] = {
     {1, 1, 1, 1, 1},
@@ -127,7 +136,7 @@ void directional_filter(
 
     switch (win_size) {
         case WINSIZE_2x2:  // 2
-            avg0_factor = AVG_FACTOR_5x5;  // 全零 (实际应为 zeros)
+            avg0_factor = AVG_FACTOR_ZEROS;  // avg0 不使用 (输出 0)
             avg1_factor = AVG_FACTOR_2x2;
             break;
         case WINSIZE_3x3:  // 3
