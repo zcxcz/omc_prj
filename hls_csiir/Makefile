@@ -130,6 +130,14 @@ pattern-full-10bit:
 		-o $(PATTERN_BIN)_full_10bit
 	@echo "Built: $(PATTERN_BIN)_full_10bit"
 
+# Pattern Output with LUT optimization (bit-true)
+pattern-full-lut-10bit:
+	@echo "Compiling Pattern Output testbench (Full Pipeline + LUT, 10-bit)..."
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -DPIXEL_BITWIDTH=10 -DUSE_LUT_DIV $(DEFINES) \
+		$(SRCS) $(SRC_DIR)/directional_filter_lut.cpp $(TB_DIR)/tb_csiir_pattern_full.cpp \
+		-o $(PATTERN_BIN)_full_lut_10bit
+	@echo "Built: $(PATTERN_BIN)_full_lut_10bit"
+
 # -----------------------------------------------------------------------------
 # Run C2C Validation
 # -----------------------------------------------------------------------------

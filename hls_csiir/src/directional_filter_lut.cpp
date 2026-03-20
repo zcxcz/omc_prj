@@ -271,7 +271,7 @@ pixel_t gradient_weighted_avg_lut(
     } else {
         // 大数使用硬件除法或迭代近似
         // 这里使用倒数乘法 (可能有小误差，但 < 1 LSB)
-        ap_uint<16> recip_approx = (ap_uint<16)((65536 + grad_sum / 2) / grad_sum);
+        ap_uint<32> recip_approx = (ap_uint<32>)((65536 + grad_sum / 2) / grad_sum);
         ap_uint<64> product = (ap_uint<64>)weighted_sum * (ap_uint<64>)recip_approx;
         return (pixel_t)((product + 32768) >> 16);
     }

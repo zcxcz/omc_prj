@@ -73,6 +73,8 @@ def generate_gwa_recip_lut(max_grad_sum=256):
     生成 Gradient Weighted Avg 倒数 LUT (Q16 格式)
 
     RECIP[g] = round(65536 / g)
+
+    注意: g=1 时 RECIP=65536，需要 17 bits
     """
     lut = [0]  # [0] 不使用
     for g in range(1, max_grad_sum + 1):
@@ -140,8 +142,9 @@ def generate_header_file(output_path):
     # GWA_RECIP_LUT
     lines.append("// Gradient Weighted Avg 倒数 LUT (Q16 格式)")
     lines.append(f"// 范围: [1, 256]")
+    lines.append("// 注意: g=1 时 RECIP=65536，需要 17 bits")
     lines.append("")
-    lines.append("static const ap_uint<16> GWA_RECIP_LUT[257] = {")
+    lines.append("static const ap_uint<17> GWA_RECIP_LUT[257] = {")
     lines.append("    0,  // [0] 不使用")
 
     gwa_values = [str(r) for r in gwa_recip_lut[1:]]
